@@ -15,6 +15,7 @@ class MyMapPage extends StatefulWidget { // StatefulWidget - widget that can cha
 
 class _MyMapPageState extends State<MyMapPage> { // this class holds the state of the MyMapPage widget, including the current position and the logic to update it
 
+  List<LatLng> capturedHubs = [];
   LatLng myPosition = LatLng(51.4416, 5.4897); // initial position
   final List<LatLng> poi = [ // POI; LatLng - class, represents a geographical point with latitude and longitude
     const LatLng(51.4485, 5.4571), // Strijp-S
@@ -49,7 +50,13 @@ class _MyMapPageState extends State<MyMapPage> { // this class holds the state o
       // check every hub in the list
       for (var hub in poi) {
         if (checkIfInsideHub(newPoint, hub)) { // checks if the new point is within 50m of the hub
-          print("You are close to a Hub!");
+          if (!capturedHubs.contains(hub)) {
+            print("You just captured a new territory!");
+
+            setState(() {
+              capturedHubs.add(hub); // save to memory
+            });
+          }
         }
       }
 
@@ -134,6 +141,19 @@ class _MyMapPageState extends State<MyMapPage> { // this class holds the state o
                 ),
               );
             }).toList(), // converts the iterable returned by map into a list, required by the markers property of MarkerLayer
+          ),
+
+          CircleLayer(
+            circles: capturedHubs.map((capturedPos) {
+              return CircleMarker(
+                point: capturedPos, // where the circle should be placed
+                color: Colors.blueAccent.withOpacity(0.3),
+                borderStrokeWidth: 2, // thickness of the border
+                borderColor: Colors.blueAccent,
+                useRadiusInMeter: true, // tells the map that the radius is in meters, not pixels
+                radius: 350,
+              );
+            }).toList(),
           ),
         ],
       ),
