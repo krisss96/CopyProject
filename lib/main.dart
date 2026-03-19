@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:latlong2/latlong.dart' as ll;
+import 'package:latlong2/latlong.dart' as ll; // latlong2 - package for handling geographical coordinates, provides the LatLng class and distance calculations
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
+import 'dart:typed_data'; // dart:typed_data - provides classes for working with binary data, used here for creating custom marker icons from byte data
+import 'dart:ui' as ui; // dart:ui - provides low-level graphics operations, used here for creating custom marker icons
 
 void main() {
   runApp(MaterialApp(home: MyMapPage()));
@@ -22,8 +24,8 @@ class MyMapPage extends StatefulWidget { // StatefulWidget - widget that can cha
 
 class _MyMapPageState extends State<MyMapPage> {
   // this class holds the state of the MyMapPage widget, including the current position and the logic to update it
-  // variables:
 
+  // Custom map style - JSON string that defines the visual style of the Google Map
   final String _myMapStyle = '''
 [
   {"featureType":"poi","stylers":[{"visibility":"off"}]},
@@ -35,13 +37,51 @@ class _MyMapPageState extends State<MyMapPage> {
 ]
 ''';
 
+
+  // VARIABLES
   gmaps.LatLng _toGmaps(ll.LatLng p) => gmaps.LatLng(p.latitude, p.longitude);
   bool isBattleActive = false;
   double playerProgress = 0;
   double rivalProgress = 0;
   ll.LatLng? battleStartPoint;
-  Rival? currentRival;
-  // ? - Nullable Type, currently can be null
+  Rival? currentRival;  // ? - Nullable Type, currently can be null
+  late gmaps.BitmapDescriptor _towerIcon;
+  late gmaps.BitmapDescriptor _flagIcon;
+  late gmaps.BitmapDescriptor _playerIcon;
+
+  // Custom marker generation
+  Future<gmaps.BitmapDescriptor> _getMarkerBitmap(IconData iconData, Color color, {int size = 96}) async {
+    final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(pictureRecorder);
+    final Paint paint = Paint()..color = color;
+    canvas.drawCircle(Offset(size / 2, size / 2), size / 2, paint);
+    final TextPainter textPainter = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(iconData.codePoint),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.6,
+          fontFamily: iconData.fontFamily,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(size / 2 - textPainter.width / 2, size / 2 - textPainter.height / 2));
+
+    final ui.Picture picture = pictureRecorder.endRecording();
+    final ui.Image image = await picture.toImage(size, size);
+    final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return gmaps.BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+  }
+
+  // Load custom icons
+  Future<void> _loadCustomIcons() async {
+    _towerIcon = await _getMarkerBitmap(Icons.castle, Colors.orange);
+    _flagIcon = await _getMarkerBitmap(Icons.flag, Colors.red);
+    _playerIcon = await _getMarkerBitmap(Icons.person, Colors.blue);
+  }
 
   // Rivals
   final List<Rival> rivals = [
@@ -84,6 +124,8 @@ class _MyMapPageState extends State<MyMapPage> {
     // used to set up any necessary state or start any processes that should run when the widget is displayed
     super.initState(); // standard background setup
     // !! ALWAYS CALL SUPER.INITSTATE() FIRST !!
+    _initLocation();
+    _loadCustomIcons();  // ADD THIS
     _initLocation();
   }
 
@@ -277,7 +319,7 @@ class _MyMapPageState extends State<MyMapPage> {
 
 @override
 Widget build(BuildContext context) {
-  return Scaffold(
+  return Scaffold( // Scaffold - provides a basic structure for the app, including app bar, body, etc.
     body: gmaps.GoogleMap(
       style: _myMapStyle,
       initialCameraPosition: gmaps.CameraPosition(
@@ -287,36 +329,28 @@ Widget build(BuildContext context) {
       myLocationEnabled: true,
       onMapCreated: (controller) {},
 
-      // PRESERVED MARKER LOGIC: User, POIs, and Rivals
+      // MARKER LOGIC
       markers: {
         gmaps.Marker(
           markerId: const gmaps.MarkerId('player'),
           position: _toGmaps(myPosition),
-          icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
-            gmaps.BitmapDescriptor.hueAzure,
-          ),
+          icon: _playerIcon,
         ),
 
         ...poi.map((p) => gmaps.Marker(
-              markerId: gmaps.MarkerId('poi_${p.latitude}_${p.longitude}'),
-              position: _toGmaps(p),
-              icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
-                gmaps.BitmapDescriptor.hueOrange,
-              ),
-            )),
+          markerId: gmaps.MarkerId('poi_${p.latitude}_${p.longitude}'),
+          position: _toGmaps(p),
+          icon: _towerIcon,
+        )),
 
         ...rivals.map((r) => gmaps.Marker(
-              markerId: gmaps.MarkerId(
-                'rival_${r.position.latitude}_${r.position.longitude}',
-              ),
-              position: _toGmaps(r.position),
-              icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
-                gmaps.BitmapDescriptor.hueRed,
-              ),
-            )),
-      },
+          markerId: gmaps.MarkerId('rival_${r.position.latitude}_${r.position.longitude}'),
+          position: _toGmaps(r.position),
+          icon: _flagIcon,
+        )),
+      }.toSet(),
 
-      // PRESERVED TERRITORY LOGIC: Circles for you and rivals
+      // TERRITORY LOGIC
       circles: {
         ...capturedPoi.map((pos) => gmaps.Circle(
               circleId: gmaps.CircleId('captured_${pos.latitude}_${pos.longitude}'),
