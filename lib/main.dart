@@ -7,8 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:typed_data'; // dart:typed_data - provides classes for working with binary data, used here for creating custom marker icons from byte data
 import 'dart:ui' as ui; // dart:ui - provides low-level graphics operations, used here for creating custom marker icons
 import 'battlepage.dart';
-
-// REFACTOR IMPORTS
 import 'rivals.dart';
 import 'map.dart';
 
@@ -27,7 +25,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-//
+// Loading screen
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -105,6 +103,7 @@ class _MyMapPageState extends State<MyMapPage> {
   late List<Rival> rivals = List.from(MapAssets.initialRivals);
   List<ll.LatLng> capturedPoi = []; // keeping track on captured poi
   ll.LatLng myPosition = ll.LatLng(51.4416, 5.4897); // initial position
+  bool _hasLocationPermission = false;
 
   List<ll.LatLng> _spacedPoi() {
     final filtered = <ll.LatLng>[];
@@ -201,9 +200,20 @@ class _MyMapPageState extends State<MyMapPage> {
   }
 
   void _initLocation() async {
-    // await _determinePosition(); // shows the request box - not using for now
-    _determinePosition();
-    _startTracking();
+    try {
+      final position = await _determinePosition();
+      if (!mounted) return;
+      setState(() {
+        _hasLocationPermission = true;
+        myPosition = ll.LatLng(position.latitude, position.longitude);
+      });
+      _startTracking();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasLocationPermission = false;
+      });
+    }
   }
 
   // Tracking user's location
@@ -299,7 +309,10 @@ class _MyMapPageState extends State<MyMapPage> {
       return Future.error('Location services are disabled.');
     }
     // Check for permissions
-    LocationPermission permission = await Geolocator.requestPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
     if (permission == LocationPermission.denied) {
       return Future.error('Location permission denied.');
     }
@@ -558,7 +571,8 @@ class _MyMapPageState extends State<MyMapPage> {
                 target: _toGmaps(myPosition),
                 zoom: 14.0,
               ),
-              myLocationEnabled: true,
+              myLocationEnabled: _hasLocationPermission,
+              myLocationButtonEnabled: _hasLocationPermission,
               onMapCreated: (controller) {},
               // MARKER LOGIC
               markers: {
