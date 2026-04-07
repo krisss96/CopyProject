@@ -8,10 +8,14 @@ import 'dart:typed_data'; // dart:typed_data - provides classes for working with
 import 'dart:ui' as ui; // dart:ui - provides low-level graphics operations, used here for creating custom marker icons
 import 'battlepage.dart';
 
+// REFACTOR IMPORTS
+import 'rivals.dart';
+import 'map.dart';
+
 void main() {
   runApp(const MyApp());
 }
- 
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -72,13 +76,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-//Rivals
-class Rival {
-  final ll.LatLng position; // final- variable, can only be set once, cannot change
-  final Color color;
-  Rival({required this.position, required this.color});
-}
-
 class MyMapPage extends StatefulWidget { // StatefulWidget - widget that can change over time
   const MyMapPage({super.key});
   @override
@@ -88,23 +85,11 @@ class MyMapPage extends StatefulWidget { // StatefulWidget - widget that can cha
 class _MyMapPageState extends State<MyMapPage> {
   // this class holds the state of the MyMapPage widget, including the current position and the logic to update it
 
-  // Custom map style - JSON string that defines the visual style of the Google Map
-  final String _myMapStyle = '''
-[
-  {"featureType":"poi","stylers":[{"visibility":"off"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
-  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#8b7474"}]},
-  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#e6dcdc"}]},
-  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#2b525e"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#1d3f49"}]}
-]
-''';
-
-
   // VARIABLES
   DateTime? lastDismissedTime; // keeps track of the last time a battle dialog was dismissed
   gmaps.LatLng _toGmaps(ll.LatLng p) => gmaps.LatLng(p.latitude, p.longitude);
   bool isBattleActive = false;
+  bool _isBattleDialogOpen = false;
   bool _isInstructionsHovered = false;
   double playerProgress = 0;
   double rivalProgress = 0;
@@ -116,9 +101,14 @@ class _MyMapPageState extends State<MyMapPage> {
   gmaps.BitmapDescriptor? _purpleFlagIcon;
   gmaps.BitmapDescriptor? _playerIcon;
 
+  // REFACTORED DATA (Pointed to MapAssets)
+  late List<Rival> rivals = List.from(MapAssets.initialRivals);
+  List<ll.LatLng> capturedPoi = []; // keeping track on captured poi
+  ll.LatLng myPosition = ll.LatLng(51.4416, 5.4897); // initial position
+
   List<ll.LatLng> _spacedPoi() {
     final filtered = <ll.LatLng>[];
-    for (final hub in poi) {
+    for (final hub in MapAssets.poi) {
       if (_isFarEnoughFromExisting(hub, filtered)) {
         filtered.add(hub);
       }
@@ -200,56 +190,6 @@ class _MyMapPageState extends State<MyMapPage> {
     }
   }
 
-  // Rivals
-  final List<Rival> rivals = [
-    Rival(position: const ll.LatLng(51.451333, 5.480772), color: Colors.redAccent),
-    // Fontys
-    Rival(position: ll.LatLng(51.430280, 5.499215), color: Colors.redAccent),
-    // park
-    Rival(position: ll.LatLng(51.4460, 5.4850), color: Colors.redAccent),
-    Rival(position: const ll.LatLng(51.438400, 5.492200), color: Colors.redAccent),
-    Rival(position: const ll.LatLng(51.455200, 5.468900), color: Colors.redAccent),
-    // City Center
-    Rival(position: const ll.LatLng(51.411092, 5.457458),
-        color: Colors.purpleAccent),
-    Rival(position: const ll.LatLng(51.477588, 5.493336),
-        color: Colors.purpleAccent),
-    Rival(position: const ll.LatLng(51.421900, 5.470300),
-        color: Colors.purpleAccent),
-    Rival(position: const ll.LatLng(51.463300, 5.505200),
-        color: Colors.purpleAccent),
-    Rival(position: const ll.LatLng(51.434700, 5.452600),
-        color: Colors.purpleAccent),
-    // Lidl
-  ];
-
-  List<ll.LatLng> capturedPoi = []; // keeping track on captured poi
-  ll.LatLng myPosition = ll.LatLng(51.4416, 5.4897); // initial position
-
-  // POI
-  final List<ll.LatLng> poi = [
-    // POI; LatLng - class, represents a geographical point with latitude and longitude
-    const ll.LatLng(51.4485, 5.4571),
-    // Strijp-S
-    const ll.LatLng(51.4411, 5.4772),
-    // The Blob
-    const ll.LatLng(51.4417, 5.4674),
-    // Philips Stadium
-    const ll.LatLng(51.416659, 5.478230),
-    const ll.LatLng(51.422788, 5.499913),
-    const ll.LatLng(51.435511, 5.461900),
-    const ll.LatLng(51.464703, 5.473595),
-    const ll.LatLng(51.426775, 5.508957),
-    const ll.LatLng(51.434882, 5.513163),
-    const ll.LatLng(51.489500, 5.458000),
-    const ll.LatLng(51.487200, 5.523800),
-    const ll.LatLng(51.399800, 5.522400),
-    const ll.LatLng(51.398900, 5.439500),
-    const ll.LatLng(51.471900, 5.432200),
-    const ll.LatLng(51.407300, 5.531100),
-    const ll.LatLng(51.493100, 5.501900),
-  ];
-
   @override
   void initState() {
     // initialization method, called once when the widget is first created,
@@ -285,8 +225,8 @@ class _MyMapPageState extends State<MyMapPage> {
         myPosition = newPoint;
       });
 
-      // Battle logic 
-       if (isBattleActive && battleStartPoint != null) {
+      // Battle logic
+      if (isBattleActive && battleStartPoint != null) {
         double movedDistance = Geolocator.distanceBetween(
           battleStartPoint!.latitude, battleStartPoint!.longitude,
           newPoint.latitude, newPoint.longitude,
@@ -302,7 +242,7 @@ class _MyMapPageState extends State<MyMapPage> {
         } else if (rivalProgress >= 500) {
           endBattle(false, currentRival!);
         }
-      } 
+      }
       // check every hub in the list
       for (var hub in _spacedPoi()) {
         if (checkIfInsideHub(newPoint,
@@ -327,7 +267,7 @@ class _MyMapPageState extends State<MyMapPage> {
         bool isCooldownOver = lastDismissedTime == null ||
             DateTime.now().difference(lastDismissedTime!).inSeconds > 30;
 
-        if (dist < 100 && !isBattleActive && isCooldownOver) {
+        if (dist < 100 && !isBattleActive && isCooldownOver && !_isBattleDialogOpen) {
           showBattleDialog(rival);
         }
       }
@@ -399,9 +339,9 @@ class _MyMapPageState extends State<MyMapPage> {
         content: SingleChildScrollView(
           child: Text(
             "Your mission is simple: Get there.\n\n"
-            "Want to claim more territory? Walk further.\n\n"
-            "Want to conquer your enemies? Challenge them to a battle and be faster.\n\n "
-            "Turn the entire map blue, one step at a time.",
+                "Want to claim more territory? Walk further.\n\n"
+                "Want to conquer your enemies? Challenge them to a battle and be faster.\n\n "
+                "Turn the entire map blue, one step at a time.",
             style: GoogleFonts.geologica(
               color: const Color(0xFFEAF7F2),
               height: 1.4,
@@ -431,6 +371,7 @@ class _MyMapPageState extends State<MyMapPage> {
 
   // Battle logic
   void showBattleDialog(Rival rival) async {
+    _isBattleDialogOpen = true;
     final shouldStartBattle = await showDialog<bool>(
       context: context,
       builder: (context) =>
@@ -449,9 +390,9 @@ class _MyMapPageState extends State<MyMapPage> {
               ),
             ),
             content: Text(
-                "This area belongs to the ${rival.color == Colors.redAccent
-                    ? 'Red'
-                    : 'Purple'} Rival. Challenge them to a territory battle?",
+              "This area belongs to the ${rival.color == Colors.redAccent
+                  ? 'Red'
+                  : 'Purple'} Rival. Challenge them to a territory battle?",
               style: GoogleFonts.geologica(
                 color: const Color(0xFFEAF7F2),
                 height: 1.4,
@@ -468,9 +409,13 @@ class _MyMapPageState extends State<MyMapPage> {
                   Navigator.pop(context, false);
                 },
                 style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFEAF7F2),
+                  foregroundColor: const Color(0xFF0F231D),
+                  backgroundColor: const Color(0xFFFF751F),
                   textStyle: GoogleFonts.geologica(
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: const Text("Dismiss"),
@@ -496,6 +441,8 @@ class _MyMapPageState extends State<MyMapPage> {
           ),
     );
 
+    _isBattleDialogOpen = false;
+
     if (shouldStartBattle == true && mounted) {
       startBattle(rival);
     }
@@ -510,11 +457,6 @@ class _MyMapPageState extends State<MyMapPage> {
       rivalProgress = 120;  // test start value
       battleStartPoint = myPosition;
     });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Battle started! Walk 500 meters to win!"),
-          duration: Duration(seconds: 2)),
-    );
   }
 
   // Debug helper: manually move both runners without real-world walking.
@@ -562,17 +504,7 @@ class _MyMapPageState extends State<MyMapPage> {
           ),
         ),
         actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              foregroundColor: const Color(0xFF0F231D),
-              backgroundColor: const Color(0xFFFF751F),
-              textStyle: GoogleFonts.geologica(
-                fontWeight: FontWeight.w700,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
+          TextButton(
             onPressed: () {
               Navigator.pop(context);
 
@@ -586,6 +518,17 @@ class _MyMapPageState extends State<MyMapPage> {
                 rivalProgress = 0;
               });
             },
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF0F231D),
+              backgroundColor: const Color(0xFFFF751F),
+              textStyle: GoogleFonts.geologica(
+                fontWeight: FontWeight.w700,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             child: const Text("RETURN TO MAP"),
           ),
         ],
@@ -595,136 +538,136 @@ class _MyMapPageState extends State<MyMapPage> {
 
 
   // Build method - describes how to display the widget
-@override
-Widget build(BuildContext context) {
-  final spacedPoi = _spacedPoi();
-  final spacedRivals = _spacedRivals();
+  @override
+  Widget build(BuildContext context) {
+    final spacedPoi = _spacedPoi();
+    final spacedRivals = _spacedRivals();
 
-  return Scaffold(
-    // Scaffold - provides a basic structure for the app
-    floatingActionButton: FloatingActionButton(
-      onPressed: _incrementBattleProgress,
-      child: const Icon(Icons.play_arrow),
-    ),
-    body:Stack( // Stack - allows you to overlay multiple widgets on top of each other
-  children: [
-  // The Map
-  gmaps.GoogleMap(
-  style: _myMapStyle,
-    initialCameraPosition: gmaps.CameraPosition(
-      target: _toGmaps(myPosition),
-      zoom: 14.0,
-    ),
-    myLocationEnabled: true,
-    onMapCreated: (controller) {},
-    // MARKER LOGIC
-    markers: {
-      gmaps.Marker(
-        markerId: const gmaps.MarkerId('player'),
-        position: _toGmaps(myPosition),
-        icon: _playerIcon ??
-            gmaps.BitmapDescriptor.defaultMarkerWithHue(
-              gmaps.BitmapDescriptor.hueAzure,
-            ),
+    return Scaffold(
+      // Scaffold - provides a basic structure for the app
+      floatingActionButton: FloatingActionButton(
+        onPressed: _incrementBattleProgress,
+        child: const Icon(Icons.play_arrow),
       ),
-
-      ...spacedPoi.map((p) => gmaps.Marker(
-        markerId: gmaps.MarkerId('poi_${p.latitude}_${p.longitude}'),
-        position: _toGmaps(p),
-        icon: _towerIcon ??
-            gmaps.BitmapDescriptor.defaultMarkerWithHue(
-              gmaps.BitmapDescriptor.hueOrange,
-            ),
-      )),
-
-      ...spacedRivals.map((r) => gmaps.Marker(
-        markerId: gmaps.MarkerId('rival_${r.position.latitude}_${r.position.longitude}'),
-        position: _toGmaps(r.position),
-        icon: (r.color == Colors.purpleAccent ? _purpleFlagIcon : _flagIcon) ??
-            gmaps.BitmapDescriptor.defaultMarkerWithHue(
-              r.color == Colors.purpleAccent
-                  ? gmaps.BitmapDescriptor.hueViolet
-                  : gmaps.BitmapDescriptor.hueRed,
-            ),
-      )),
-    }.toSet(),
-
-    //  TERRITORY LOGIC
-    circles: {
-      ...capturedPoi.map((pos) => gmaps.Circle(
-        // ... - cascade operator, allows you to add multiple items to a collection in a more concise way
-        circleId: gmaps.CircleId('captured_${pos.latitude}_${pos.longitude}'),
-        center: _toGmaps(pos),
-        radius: 350,
-        fillColor: Colors.blueAccent.withValues(alpha: 0.3),
-        strokeWidth: 2,
-        strokeColor: Colors.blueAccent,
-      )),
-
-      ...spacedRivals.map((r) => gmaps.Circle(
-        circleId: gmaps.CircleId(
-          'rival_territory_${r.position.latitude}_${r.position.longitude}',
-        ),
-        center: _toGmaps(r.position),
-        radius: 350,
-        fillColor: r.color.withValues(alpha: 0.2),
-        strokeWidth: 2,
-        strokeColor: r.color,
-      )),
-    },
-  ),
-
-    SafeArea(
-      child: Align(
-        alignment: Alignment.topRight,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 12, right: 12),
-          child: MouseRegion(
-            onEnter: (_) => setState(() => _isInstructionsHovered = true),
-            onExit: (_) => setState(() => _isInstructionsHovered = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              decoration: BoxDecoration(
-                color: _isInstructionsHovered
-                    ? Colors.orange.withValues(alpha: 0.22)
-                    : Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: _isInstructionsHovered
-                    ? [
-                        BoxShadow(
-                          color: Colors.orange.withValues(alpha: 0.35),
-                          blurRadius: 14,
-                          spreadRadius: 1,
-                        ),
-                      ]
-                    : null,
+      body:Stack( // Stack - allows you to overlay multiple widgets on top of each other
+          children: [
+            // The Map
+            gmaps.GoogleMap(
+              style: MapAssets.myMapStyle,
+              initialCameraPosition: gmaps.CameraPosition(
+                target: _toGmaps(myPosition),
+                zoom: 14.0,
               ),
-              child: IconButton(
-                tooltip: 'Game Instructions',
-                icon: Icon(
-                  Icons.menu,
-                  color: _isInstructionsHovered
-                      ? const Color(0xFFFFE2BF)
-                      : Colors.white,
+              myLocationEnabled: true,
+              onMapCreated: (controller) {},
+              // MARKER LOGIC
+              markers: {
+                gmaps.Marker(
+                  markerId: const gmaps.MarkerId('player'),
+                  position: _toGmaps(myPosition),
+                  icon: _playerIcon ??
+                      gmaps.BitmapDescriptor.defaultMarkerWithHue(
+                        gmaps.BitmapDescriptor.hueAzure,
+                      ),
                 ),
-                onPressed: _showGameInstructions,
+
+                ...spacedPoi.map((p) => gmaps.Marker(
+                  markerId: gmaps.MarkerId('poi_${p.latitude}_${p.longitude}'),
+                  position: _toGmaps(p),
+                  icon: _towerIcon ??
+                      gmaps.BitmapDescriptor.defaultMarkerWithHue(
+                        gmaps.BitmapDescriptor.hueOrange,
+                      ),
+                )),
+
+                ...spacedRivals.map((r) => gmaps.Marker(
+                  markerId: gmaps.MarkerId('rival_${r.position.latitude}_${r.position.longitude}'),
+                  position: _toGmaps(r.position),
+                  icon: (r.color == Colors.purpleAccent ? _purpleFlagIcon : _flagIcon) ??
+                      gmaps.BitmapDescriptor.defaultMarkerWithHue(
+                        r.color == Colors.purpleAccent
+                            ? gmaps.BitmapDescriptor.hueViolet
+                            : gmaps.BitmapDescriptor.hueRed,
+                      ),
+                )),
+              }.toSet(),
+
+              //  TERRITORY LOGIC
+              circles: {
+                ...capturedPoi.map((pos) => gmaps.Circle(
+                  // ... - cascade operator, allows you to add multiple items to a collection in a more concise way
+                  circleId: gmaps.CircleId('captured_${pos.latitude}_${pos.longitude}'),
+                  center: _toGmaps(pos),
+                  radius: 350,
+                  fillColor: Colors.blueAccent.withValues(alpha: 0.3),
+                  strokeWidth: 2,
+                  strokeColor: Colors.blueAccent,
+                )),
+
+                ...spacedRivals.map((r) => gmaps.Circle(
+                  circleId: gmaps.CircleId(
+                    'rival_territory_${r.position.latitude}_${r.position.longitude}',
+                  ),
+                  center: _toGmaps(r.position),
+                  radius: 350,
+                  fillColor: r.color.withValues(alpha: 0.2),
+                  strokeWidth: 2,
+                  strokeColor: r.color,
+                )),
+              },
+            ),
+
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12, right: 12),
+                  child: MouseRegion(
+                    onEnter: (_) => setState(() => _isInstructionsHovered = true),
+                    onExit: (_) => setState(() => _isInstructionsHovered = false),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      decoration: BoxDecoration(
+                        color: _isInstructionsHovered
+                            ? Colors.orange.withValues(alpha: 0.22)
+                            : Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: _isInstructionsHovered
+                            ? [
+                          BoxShadow(
+                            color: Colors.orange.withValues(alpha: 0.35),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                            : null,
+                      ),
+                      child: IconButton(
+                        tooltip: 'Game Instructions',
+                        icon: Icon(
+                          Icons.menu,
+                          color: _isInstructionsHovered
+                              ? const Color(0xFFFFE2BF)
+                              : Colors.white,
+                        ),
+                        onPressed: _showGameInstructions,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
-    ),
 
-    if (isBattleActive)
-    BattlePage(
-      playerProgress: playerProgress, // Sending real movement data
-      rivalProgress: rivalProgress,   // Sending bot movement data
-      rivalColor: currentRival?.color ?? Colors.red, // Sending the territory color
-      onIncrementProgress: _incrementBattleProgress,
-    ),
-    ]
-  ),
+            if (isBattleActive)
+              BattlePage(
+                playerProgress: playerProgress, // Sending real movement data
+                rivalProgress: rivalProgress,   // Sending bot movement data
+                rivalColor: currentRival?.color ?? Colors.red, // Sending the territory color
+                onIncrementProgress: _incrementBattleProgress,
+              ),
+          ]
+      ),
     );
-}
+  }
 }
