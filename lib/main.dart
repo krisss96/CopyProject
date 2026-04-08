@@ -87,17 +87,19 @@ class _MyMapPageState extends State<MyMapPage> {
   DateTime? lastDismissedTime; // keeps track of the last time a battle dialog was dismissed
   gmaps.LatLng _toGmaps(ll.LatLng p) => gmaps.LatLng(p.latitude, p.longitude);
   bool isBattleActive = false;
+  bool _isVsIntroVisible = false; // controls the visibility of the VS intro overlay
   bool _isBattleDialogOpen = false;
   bool _isInstructionsHovered = false;
   double playerProgress = 0;
   double rivalProgress = 0;
-  static const double _territoryMinCenterSpacingMeters = 760;
-  ll.LatLng? battleStartPoint;
+  static const double _territoryMinCenterSpacingMeters = 760; // minimum distance between POI and rival centers to avoid overcrowding
+  ll.LatLng? battleStartPoint; // the location where the battle started, used to calculate how far the player has moved during the battle
   Rival? currentRival;  // ? - Nullable Type, currently can be null
   gmaps.BitmapDescriptor? _towerIcon;
   gmaps.BitmapDescriptor? _flagIcon;
   gmaps.BitmapDescriptor? _purpleFlagIcon;
   gmaps.BitmapDescriptor? _playerIcon;
+  Timer? _vsIntroTimer;
 
   // REFACTORED DATA (Pointed to MapAssets)
   late List<Rival> rivals = List.from(MapAssets.initialRivals);
@@ -199,6 +201,12 @@ class _MyMapPageState extends State<MyMapPage> {
     _loadCustomIcons();
   }
 
+  @override
+  void dispose() { // called when the widget is removed from the widget tree, used to clean up any resources or processes that were set up in initState
+    _vsIntroTimer?.cancel(); // cancel the timer if it's still active to prevent memory leaks
+    super.dispose(); // super-
+  }
+
   void _initLocation() async {
     try {
       final position = await _determinePosition();
@@ -277,7 +285,7 @@ class _MyMapPageState extends State<MyMapPage> {
         bool isCooldownOver = lastDismissedTime == null ||
             DateTime.now().difference(lastDismissedTime!).inSeconds > 30;
 
-        if (dist < 100 && !isBattleActive && isCooldownOver && !_isBattleDialogOpen) {
+        if (dist < 100 && !isBattleActive && !_isVsIntroVisible && isCooldownOver && !_isBattleDialogOpen) {
           showBattleDialog(rival);
         }
       }
@@ -463,12 +471,26 @@ class _MyMapPageState extends State<MyMapPage> {
 
   // Battle state
   void startBattle(Rival rival) {
+    _vsIntroTimer?.cancel();
+
     setState(() {
-      isBattleActive = true;
+      isBattleActive = false;
+      _isVsIntroVisible = true;
       currentRival = rival;
-      playerProgress = 400; // test start value
-      rivalProgress = 120;  // test start value
+      playerProgress = 0;
+      rivalProgress = 0;
       battleStartPoint = myPosition;
+    });
+
+    _vsIntroTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _isVsIntroVisible = false;
+        isBattleActive = true;
+        playerProgress = 400; // test start value
+        rivalProgress = 120;  // test start value
+        battleStartPoint = myPosition;
+      });
     });
   }
 
@@ -520,9 +542,11 @@ class _MyMapPageState extends State<MyMapPage> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
+              _vsIntroTimer?.cancel();
 
               setState(() {
                 isBattleActive = false;
+                _isVsIntroVisible = false;
                 if (playerWon) {
                   capturedPoi.add(rival.position);
                   rivals.remove(rival);
@@ -679,6 +703,12 @@ class _MyMapPageState extends State<MyMapPage> {
                 rivalProgress: rivalProgress,   // Sending bot movement data
                 rivalColor: currentRival?.color ?? Colors.red, // Sending the territory color
                 onIncrementProgress: _incrementBattleProgress,
+              ),
+
+            if (_isVsIntroVisible && currentRival != null)
+              BattleVsIntroOverlay(
+                playerColor: Colors.blueAccent,
+                rivalColor: currentRival!.color,
               ),
           ]
       ),
