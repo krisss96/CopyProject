@@ -9,6 +9,7 @@ import 'dart:ui' as ui; // dart:ui - provides low-level graphics operations, use
 import 'battlepage.dart';
 import 'rivals.dart';
 import 'map.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
@@ -100,6 +101,7 @@ class _MyMapPageState extends State<MyMapPage> {
   gmaps.BitmapDescriptor? _purpleFlagIcon;
   gmaps.BitmapDescriptor? _playerIcon;
   Timer? _vsIntroTimer;
+  late SharedPreferences _prefs; // late - variable that will be initialized later, used for storing captured POI persistently
 
   // REFACTORED DATA (Pointed to MapAssets)
   late List<Rival> rivals = List.from(MapAssets.initialRivals);
@@ -121,6 +123,9 @@ class _MyMapPageState extends State<MyMapPage> {
     final filtered = <Rival>[];
     final acceptedPositions = <ll.LatLng>[];
     for (final rival in rivals) {
+      if (capturedPoi.contains(rival.position)) {
+        continue;
+      }
       if (_isFarEnoughFromExisting(rival.position, acceptedPositions)) {
         filtered.add(rival);
         acceptedPositions.add(rival.position);
@@ -145,7 +150,7 @@ class _MyMapPageState extends State<MyMapPage> {
   }
 
   // Custom marker generation
-  Future<gmaps.BitmapDescriptor> _getMarkerBitmap(IconData iconData, Color color, {int size = 132}) async {
+  Future<gmaps.BitmapDescriptor> _getMarkerBitmap(IconData iconData, Color color, {int size = 62}) async {
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
     final Paint paint = Paint()..color = color;
@@ -168,7 +173,7 @@ class _MyMapPageState extends State<MyMapPage> {
     final ui.Picture picture = pictureRecorder.endRecording();
     final ui.Image image = await picture.toImage(size, size);
     final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return gmaps.BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
+    return gmaps.BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
   }
 
   // Load custom icons
@@ -199,6 +204,12 @@ class _MyMapPageState extends State<MyMapPage> {
     // !! ALWAYS CALL SUPER.INITSTATE() FIRST !!
     _initLocation();
     _loadCustomIcons();
+    _initPrefs();
+  }
+
+  void _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance(); // getInstance - retrieves the singleton instance of SharedPreferences
+    _loadCapturedData();
   }
 
   @override
@@ -271,6 +282,7 @@ class _MyMapPageState extends State<MyMapPage> {
             setState(() {
               capturedPoi.add(hub); // save to memory
             });
+            _saveCapturedData(); // save to persistent storage
           }
         }
       }
@@ -554,6 +566,7 @@ class _MyMapPageState extends State<MyMapPage> {
                 playerProgress = 0;
                 rivalProgress = 0;
               });
+              _saveCapturedData(); // save the updated captured POI list after the battle
             },
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF0F231D),
@@ -573,6 +586,28 @@ class _MyMapPageState extends State<MyMapPage> {
     );
   }
 
+  // Converts LatLng and saves it as string
+  void _saveCapturedData() async {
+    List<String> dataToSave = capturedPoi.map((coordinate) { // map
+      return "${coordinate.latitude},${coordinate.longitude}";
+    }).toList();
+
+    await _prefs.setStringList('captured_territories', dataToSave);
+  }
+
+  // Loads the captured POI from shared preferences and converts them back to LatLng
+  void _loadCapturedData() {
+    List<String>? savedData = _prefs.getStringList('captured_territories');
+    if (savedData != null) {
+      setState(() {
+        capturedPoi = savedData.map((item) {
+          List<String> coords = item.split(',');
+          return ll.LatLng(double.parse(coords[0]), double.parse(coords[1]));
+        }).toList();
+      });
+    }
+  }
+
 
   // Build method - describes how to display the widget
   @override
@@ -582,10 +617,6 @@ class _MyMapPageState extends State<MyMapPage> {
 
     return Scaffold(
       // Scaffold - provides a basic structure for the app
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementBattleProgress,
-        child: const Icon(Icons.play_arrow),
-      ),
       body:Stack( // Stack - allows you to overlay multiple widgets on top of each other
           children: [
             // The Map
