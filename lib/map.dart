@@ -33,7 +33,7 @@ class MapAssets {
     // Lidl
   ];
 
-  // POIhey
+  // POI
   static const List<ll.LatLng> poi = [
     // POI; LatLng - class, represents a geographical point with latitude and longitude
     ll.LatLng(51.4485, 5.4571),
