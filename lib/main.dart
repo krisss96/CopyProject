@@ -10,6 +10,7 @@ import 'battlepage.dart';
 import 'rivals.dart';
 import 'map.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 void main() {
   runApp(const MyApp());
@@ -102,11 +103,18 @@ class _MyMapPageState extends State<MyMapPage> {
   gmaps.BitmapDescriptor? _playerIcon;
   Timer? _vsIntroTimer;
   late SharedPreferences _prefs; // late - variable that will be initialized later, used for storing captured POI persistently
-
   late List<Rival> rivals = List.from(MapAssets.initialRivals);
   List<ll.LatLng> capturedPoi = []; // keeping track on captured poi
   ll.LatLng myPosition = ll.LatLng(51.4416, 5.4897); // initial position
   bool _hasLocationPermission = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  static const String _battleDialogSound = 'mixkit-quick-positive-video-game-notification-interface-265.wav';
+  static const String _victorySound = 'mixkit-game-level-completed-2059.wav';
+  static const String _defeatSound = 'zapsplat_musical_strings_orchestra_riff_short_descending_fail_107286.mp3';
+
+  void _playBattleSound(String fileName) async {
+    await _audioPlayer.play(AssetSource('audio/$fileName'));
+  }
 
   List<ll.LatLng> _spacedPoi() {
     final filtered = <ll.LatLng>[];
@@ -463,6 +471,7 @@ class _MyMapPageState extends State<MyMapPage> {
   // Battle logic
   void showBattleDialog(Rival rival) async {
     _isBattleDialogOpen = true;
+    _playBattleSound(_battleDialogSound);
     final shouldStartBattle = await showDialog<bool>(
       context: context,
       builder: (context) =>
@@ -582,6 +591,7 @@ class _MyMapPageState extends State<MyMapPage> {
 
   //End battle
   void endBattle(bool playerWon, Rival rival) {
+    _playBattleSound(playerWon ? _victorySound : _defeatSound);
     showDialog(
       context: context,
       barrierDismissible: false,
