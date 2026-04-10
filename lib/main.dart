@@ -290,6 +290,7 @@ class _MyMapPageState extends State<MyMapPage> {
               capturedPoi.add(hub); // save to memory
             });
             _saveCapturedData(); // save to persistent storage
+            _playBattleSound(_victorySound);
             _showPoiCaptureVictoryPopup();
           }
         }
